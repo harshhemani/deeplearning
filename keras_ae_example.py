@@ -1,65 +1,132 @@
-# Original author: @mthrok, copied from https://github.com/fchollet/keras/issues/358
-
-from __future__ import absolute_import
-from __future__ import print_function
-import numpy as np
-np.random.seed(1337) # for reproducibility
-
-from keras.datasets import mnist
+from keras.layers.core import Activation, Dense
+from keras_custom_layers import DAE
 from keras.models import Sequential
-from keras.layers import containers
-from keras.layers.core import Dense, AutoEncoder
-from keras.activations import sigmoid
+from keras.optimizers import SGD
+from keras.datasets import mnist
 from keras.utils import np_utils
+import numpy as np
+import theano
 
-batch_size = 64
 nb_classes = 10
-nb_epoch = 1
-nb_hidden_layers = [784, 600, 500, 400]
+"""
+# 96.06% accuracy on 50k-10k split # 430 seconds
+layer_sizes = [784, 450, 350, 100]
+nb_pretrain_epochs = [5, 5, 5]
+nb_finetune_epochs = 5
+batch_sizes = [250, 300, 500]
+"""
 
-# the data, shuffled and split between train and test sets
+"""
+# 94.51% accuracy on 50k-10k split # 177 seconds
+layer_sizes = [784, 450, 350, 100]
+nb_pretrain_epochs = [0, 0, 0]
+nb_finetune_epochs = 5
+batch_sizes = [250, 300, 500]
+"""
+
+"""
+# 96.96% accuracy on 50k-10k split # 500 seconds
+layer_sizes = [784, 450, 350, 100]
+nb_pretrain_epochs = [0, 0, 0]
+nb_finetune_epochs = 15
+batch_sizes = [250, 300, 500]
+"""
+
+"""
+# 97.35% accuracy on 50k-10k split # 575 seconds
+layer_sizes = [784, 450, 350, 100]
+nb_pretrain_epochs = [1, 1, 1]
+nb_finetune_epochs = 15
+batch_sizes = [250, 300, 500]
+"""
+"""
+# 97.37% accuracy on 50k-10k split # 534 seconds
+layer_sizes = [784, 450, 350, 100]
+nb_pretrain_epochs = [1, 1, 1]
+nb_finetune_epochs = 13
+batch_sizes = [250, 300, 500]
+"""
+
+"""
+# 97.18% accuracy on 50k-10k split # 522 seconds
+layer_sizes = [784, 450, 350, 100]
+nb_pretrain_epochs = [2, 2, 2]
+nb_finetune_epochs = 11
+batch_sizes = [250, 300, 500]
+"""
+
+"""
+# 97.20% accuracy on 50k-10k split # 548 seconds
+layer_sizes = [784, 450, 350, 100]
+nb_pretrain_epochs = [3, 3, 3]
+nb_finetune_epochs = 10
+batch_sizes = [250, 300, 500]
+"""
+
+# 89.62% accuracy on 50k-10k split # 48 seconds
+layer_sizes = [784, 450, 350, 100]
+nb_pretrain_epochs = [0, 0, 0]
+nb_finetune_epochs = 1
+batch_sizes = [250, 300, 500]
+
+
+
+#---------------------------------
+
+
+"""
+# 97.32% accuracy on 50k-10k split # 450 seconds
+layer_sizes = [784, 400, 100]
+nb_pretrain_epochs = [0, 0, 0]
+nb_finetune_epochs = 25
+batch_sizes = [250, 500, 1000]
+"""
+
+
 (X_train, y_train), (X_test, y_test) = mnist.load_data()
-X_train = X_train.reshape(-1, 784)
-X_test = X_test.reshape(-1, 784)
-X_train = X_train.astype("float32") / 255.0
-X_test = X_test.astype("float32") / 255.0
-print(X_train.shape[0], 'train samples')
-print(X_test.shape[0], 'test samples')
+X_train = X_train.reshape(X_train.shape[0], 784)
+X_test = X_test.reshape(X_test.shape[0], 784)
+X_train = X_train.astype(theano.config.floatX)
+X_test = X_test.astype(theano.config.floatX)
+X_train /= 255
+X_test /= 255
+y_train = np_utils.to_categorical(y_train, nb_classes)
+y_test = np_utils.to_categorical(y_test, nb_classes)
 
-# convert class vectors to binary class matrices
-Y_train = np_utils.to_categorical(y_train, nb_classes)
-Y_test = np_utils.to_categorical(y_test, nb_classes)
+X_wholeset = np.vstack([X_train, X_test])
+X_wholeset_tmp = X_wholeset
 
-# Layer-wise pretraining
-encoders = []
-nb_hidden_layers = [784, 600, 500, 400]
-X_train_tmp = np.copy(X_train)
-for i, (n_in, n_out) in enumerate(zip(nb_hidden_layers[:-1], nb_hidden_layers[1:]), start=1):
-    print('Training the layer {}: Input {} -> Output {}'.format(i, n_in, n_out))
-    # Create AE and training
-    ae = Sequential()
-    encoder = containers.Sequential([Dense(n_in, n_out, activation='sigmoid')])
-    decoder = containers.Sequential([Dense(n_out, n_in, activation='sigmoid')])
-    ae.add(AutoEncoder(encoder=encoder, decoder=decoder,
-                       output_reconstruction=False, tie_weights=True))
-    ae.compile(loss='mean_squared_error', optimizer='rmsprop')
-    ae.fit(X_train_tmp, X_train_tmp, batch_size=batch_size, nb_epoch=nb_epoch)
-    # Store trainined weight and update training data
-    encoders.append(ae.layers[0].encoder)
-    X_train_tmp = ae.predict(X_train_tmp)
-
-# Fine-turning
-model = Sequential()
-for encoder in encoders:
-    model.add(encoder)
-model.add(Dense(nb_hidden_layers[-1], nb_classes, activation='softmax'))
-
-model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
-score = model.evaluate(X_test, Y_test, show_accuracy=True, verbose=0)
-print('Test score before fine turning:', score[0])
-print('Test accuracy after fine turning:', score[1])
-model.fit(X_train, Y_train, batch_size=batch_size, nb_epoch=nb_epoch,
-          show_accuracy=True, validation_data=(X_test, Y_test))
-score = model.evaluate(X_test, Y_test, show_accuracy=True, verbose=0)
-print('Test score after fine turning:', score[0])
-print('Test accuracy after fine turning:', score[1])
+all_params = []
+# do some pretraining, but keep saving parameters
+print 'PRETRAINING'
+for i in range(len(layer_sizes)-1):
+    temp_ae_model = Sequential()
+    temp_ae_model.add(DAE(layer_sizes[i], layer_sizes[i+1], activation='sigmoid'))
+    #sgd = SGD(lr=0.1, decay=1e-6, momentum=0.9, nesterov=True)
+    temp_ae_model.compile(loss='mean_squared_error', optimizer='adam')
+    temp_ae_model.fit(X_wholeset_tmp, X_wholeset_tmp, nb_epoch=nb_pretrain_epochs[i], batch_size=batch_sizes[i])
+    X_wholeset_tmp = temp_ae_model.predict(X_wholeset_tmp)
+    W, b, bT = temp_ae_model.get_weights()
+    all_params.append((W, b, bT))
+# create model for fine tuning
+final_ae_model = Sequential()
+for i in range(len(layer_sizes)-1):
+    dense_layer = Dense(layer_sizes[i], layer_sizes[i+1], activation='sigmoid')
+    final_ae_model.add(dense_layer)
+final_ae_model.add(Dense(layer_sizes[-1], nb_classes, activation='sigmoid'))
+final_ae_model.add(Activation('softmax'))
+final_ae_model.compile(loss='categorical_crossentropy', optimizer='adam')
+# initialize weights
+for i in range(len(layer_sizes)-1):
+    W, b, bT = all_params[i]
+    final_ae_model.layers[i].set_weights([W, b])
+# finetune
+print 'FINETUNING'
+final_ae_model.fit(X_train, y_train, nb_epoch=nb_finetune_epochs, batch_size=200)
+"""
+print 'SAVING MODEL TO DISK'
+final_ae_model.save_weights('mnist_ae_model.keras', overwrite=True)
+"""
+# evaluate performance
+score = final_ae_model.evaluate(X_test, y_test, show_accuracy=True, verbose=0)
+print 'Test accuracy:', score[1]
