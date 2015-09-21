@@ -1,26 +1,26 @@
 import theano
+import numpy as np
 import theano.tensor as T
 from keras.layers.core import Layer, Activation
 from keras.utils.theano_utils import shared_zeros
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from keras import initializations, activations, regularizers, constraints
-
-theano.config.exception_verbosity = 'high'
-theano.config.optimizer = 'fast_compile'
 
 class DAE(Layer):
     '''
         Denoising AutoEncoder
-        Well, right now just a regular encoder, but i'll make it a denoising autoencoder soon 
     '''
     def __init__(self, input_dim, output_dim, init='glorot_uniform', activation='linear', weights=None, name=None,
                  W_regularizer=None, b_regularizer=None, activity_regularizer=None,
-                 W_constraint=None, b_constraint=None):
+                 W_constraint=None, b_constraint=None, corruption_level=0.0):
 
         super(DAE, self).__init__()
+        self.srng = RandomStreams(seed=np.random.randint(10e6))
         self.init = initializations.get(init)
         self.activation = activations.get(activation)
         self.input_dim = input_dim
         self.output_dim = output_dim
+        self.corruption_level = corruption_level
 
         self.input = T.matrix()
         self.W = self.init((self.input_dim, self.output_dim))
@@ -63,6 +63,7 @@ class DAE(Layer):
     def get_output(self, train=False):
         X = self.get_input(train)
         if train:
+            X *= self.srng.normal(size=X.shape, avg=1.0, std=T.sqrt(self.corruption_level / (1.0 - self.corruption_level)), dtype=theano.config.floatX) 
             output = self.activation(T.dot(self.activation(T.dot(X, self.W) + self.b), self.W.T) + self.bT)
         else:
             output = self.activation(T.dot(X, self.W) + self.b)
@@ -78,4 +79,5 @@ class DAE(Layer):
                 "b_regularizer": self.b_regularizer.get_config() if self.b_regularizer else None,
                 "activity_regularizer": self.activity_regularizer.get_config() if self.activity_regularizer else None,
                 "W_constraint": self.W_constraint.get_config() if self.W_constraint else None,
-                "b_constraint": self.b_constraint.get_config() if self.b_constraint else None}
+                "b_constraint": self.b_constraint.get_config() if self.b_constraint else None,
+                "corruption_level": self.corruption_level}
